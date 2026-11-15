@@ -1,10 +1,131 @@
 // use prisma-8
 
 model User {
-  id        Int                @id @default(autoincrement())
-  email     String             @unique
-  username  String?
-  name      String?
-  createdAt DateTime           @default(now()) @onCreate(now())
-  updatedAt temporal.UpdatedAt
+  id                Int                @id @default(autoincrement())
+  email             String             @unique
+  name              String?
+  passwordHash      String?
+  role              UserRole           @default(User)
+  isActive          Boolean            @default(true)
+  sessions          Session[]
+  memberships       HackathonMember[]
+  createdHackathons Hackathon[]        @relation("HackathonCreator")
+  securityEvents    SecurityEvent[]
+  createdAt         DateTime           @default(now())
+  updatedAt         temporal.UpdatedAt
+}
+
+model Hackathon {
+  id                Int                @id @default(autoincrement())
+  title             String
+  slug              String             @unique
+  description       String?
+  status            HackathonStatus    @default(DRAFT)
+  registrationStart DateTime?
+  registrationEnd   DateTime?
+  startDate         DateTime?
+  endDate           DateTime?
+  createdById       Int
+  createdBy         User               @relation("HackathonCreator", fields: [createdById], references: [id])
+  members           HackathonMember[]
+  createdAt         DateTime           @default(now())
+  updatedAt         temporal.UpdatedAt
+
+  @@index([status])
+}
+
+model HackathonMember {
+  id          Int                 @id @default(autoincrement())
+  userId      Int
+  hackathonId Int
+  role        HackathonMemberRole @default(PARTICIPANT)
+  status      MembershipStatus    @default(ACTIVE)
+  user        User                @relation(fields: [userId], references: [id])
+  hackathon   Hackathon           @relation(fields: [hackathonId], references: [id])
+  joinedAt    DateTime            @default(now())
+  updatedAt   temporal.UpdatedAt
+
+  @@unique([userId, hackathonId])
+  @@index([hackathonId])
+  @@index([userId])
+}
+
+// One session represents one logged-in device/browser.
+model Session {
+  id               Int                @id @default(autoincrement())
+  userId           Int
+  refreshTokenHash String             @unique
+  tokenFamilyId    String
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  lastUsedAt       DateTime?
+  ipAddress        String?
+  userAgent        String?
+  deviceName       String?
+  user             User               @relation(fields: [userId], references: [id])
+  createdAt        DateTime           @default(now())
+  updatedAt        temporal.UpdatedAt
+
+  @@index([userId])
+  @@index([tokenFamilyId])
+  @@index([expiresAt])
+}
+
+// Security history, not the rate-limit counter itself.
+model SecurityEvent {
+  id          Int      @id @default(autoincrement())
+  userId      Int?
+  eventType   String
+  ipAddress   String?
+  userAgent   String?
+  endpoint    String?
+  method      String?
+  description String?
+  metadata    Json?
+  success     Boolean  @default(true)
+  user        User?    @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([ipAddress, createdAt])
+}
+
+// Optional: configurable rate-limit policies.
+model RateLimitPolicy {
+  id                   Int                @id @default(autoincrement())
+  key                  String             @unique
+  maxRequests          Int
+  windowSeconds        Int
+  blockDurationSeconds Int                @default(0)
+  enabled              Boolean            @default(true)
+  createdAt            DateTime           @default(now())
+  updatedAt            temporal.UpdatedAt
+}
+
+enum UserRole {
+  Admin
+  User
+}
+
+enum HackathonMemberRole {
+  ORGANIZER
+  PARTICIPANT
+  JUDGE
+  MENTOR
+}
+
+enum MembershipStatus {
+  ACTIVE
+  PENDING
+  REMOVED
+}
+
+enum HackathonStatus {
+  DRAFT
+  UPCOMING
+  REGISTRATION_OPEN
+  ONGOING
+  COMPLETED
+  CANCELLED
 }
